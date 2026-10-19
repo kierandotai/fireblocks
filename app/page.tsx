@@ -1,9 +1,6 @@
 import GuardConsole from "@/components/GuardConsole";
 import { DEFAULT_SETTINGS, MERCHANTS, SCENARIO_META } from "@/lib/scenarios";
 import { WORKSPACE_POLICY } from "@/lib/engine";
-import { liveConfigured } from "@/lib/fireblocks";
-
-export const dynamic = "force-dynamic";
 
 const REPO = "https://github.com/kierandotai/fireblocks";
 
@@ -45,7 +42,7 @@ export default function Page() {
           ))}
         </ol>
 
-        <GuardConsole scenarios={SCENARIO_META} defaults={DEFAULT_SETTINGS} merchants={MERCHANTS} policy={policy} liveAvailable={liveConfigured()} />
+        <GuardConsole scenarios={SCENARIO_META} defaults={DEFAULT_SETTINGS} merchants={MERCHANTS} policy={policy} />
 
         <section className="mt-14 grid gap-8 border-t border-navy-500 pt-10 md:grid-cols-3">
           <div>
@@ -69,7 +66,7 @@ export default function Page() {
             <p className="mt-2 text-sm leading-relaxed text-genesis-400">
               Ed25519 signing and verification, the gate logic and the rule engine run for real on every click. Merchants, wallets and
               the policy are fixtures. The final step builds a real <code className="font-mono text-genesis-200">createTransaction</code> request with
-              the official TypeScript SDK and sends it to a sandbox workspace when keys are set; otherwise it shows the payload.
+              the official TypeScript SDK. This page runs entirely in your browser and shows that payload; <code className="font-mono text-genesis-200">npm run sandbox</code> in the repo sends it to a real sandbox workspace.
             </p>
           </div>
         </section>

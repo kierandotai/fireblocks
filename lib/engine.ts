@@ -16,7 +16,12 @@
  * Gates 2-3 are the agent's own authority (what the user delegated). Gate 4 is the
  * organization's authority (what the workspace allows anyone to do). An agent payment needs both.
  */
-import { generateKeyPairSync, sign, verify, randomUUID, type KeyObject } from "node:crypto";
+import * as ed from "@noble/ed25519";
+import { sha512 } from "@noble/hashes/sha512";
+
+// Synchronous Ed25519 in both browser and Node.
+ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+const utf8 = new TextEncoder();
 
 export type Decision = "ALLOW" | "BLOCK" | "REQUIRE_APPROVAL";
 export type StepStatus = "pass" | "fail" | "warn" | "skip";
@@ -116,8 +121,8 @@ export interface AttemptResult {
 // ---------- keys and signing ----------
 
 interface KeyPair {
-  publicKey: KeyObject;
-  privateKey: KeyObject;
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
 }
 
 const keyring = new Map<string, KeyPair>();
@@ -125,7 +130,8 @@ const keyring = new Map<string, KeyPair>();
 export function keyFor(id: string): KeyPair {
   let kp = keyring.get(id);
   if (!kp) {
-    kp = generateKeyPairSync("ed25519");
+    const privateKey = ed.utils.randomPrivateKey();
+    kp = { privateKey, publicKey: ed.getPublicKey(privateKey) };
     keyring.set(id, kp);
   }
   return kp;
@@ -144,14 +150,14 @@ export function canonical(value: unknown): string {
 }
 
 export function signPayload(signerId: string, payload: unknown): string {
-  return sign(null, Buffer.from(canonical(payload)), keyFor(signerId).privateKey).toString("base64");
+  return ed.etc.bytesToHex(ed.sign(utf8.encode(canonical(payload)), keyFor(signerId).privateKey));
 }
 
 export function verifyPayload(signerId: string, payload: unknown, signature: string): boolean {
   const kp = keyring.get(signerId);
   if (!kp) return false;
   try {
-    return verify(null, Buffer.from(canonical(payload)), kp.publicKey, Buffer.from(signature, "base64"));
+    return ed.verify(ed.etc.hexToBytes(signature), utf8.encode(canonical(payload)), kp.publicKey);
   } catch {
     return false;
   }
@@ -404,5 +410,5 @@ export function fmt(n: number) {
 }
 
 export function newNonce() {
-  return randomUUID();
+  return globalThis.crypto.randomUUID();
 }

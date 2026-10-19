@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AttemptResult, Decision, Mandate, Merchant, Step } from "@/lib/engine";
-import type { MandateSettings } from "@/lib/scenarios";
-import type { SubmitResult } from "@/lib/fireblocks";
+import { runPipeline, type AttemptResult, type Decision, type Merchant, type Step } from "@/lib/engine";
+import { buildRun, type MandateSettings } from "@/lib/scenarios";
+import { buildTransactionRequest } from "@/lib/txRequest";
 
 interface ScenarioMeta {
   id: string;
@@ -13,13 +13,10 @@ interface ScenarioMeta {
   expect: string;
 }
 
-type Result = AttemptResult & { submit: SubmitResult | null };
+type Result = AttemptResult & { submit: { request: ReturnType<typeof buildTransactionRequest> } | null };
 
 interface RunResponse {
   scenario: string;
-  mandate: Mandate;
-  grantSignature: string;
-  liveAvailable: boolean;
   results: Result[];
 }
 
@@ -51,48 +48,41 @@ export default function GuardConsole({
   defaults,
   merchants,
   policy,
-  liveAvailable,
 }: {
   scenarios: ScenarioMeta[];
   defaults: MandateSettings;
   merchants: Merchant[];
   policy: { id: string; name: string; action: Decision }[];
-  liveAvailable: boolean;
 }) {
   const [active, setActive] = useState("reroute");
   const [settings, setSettings] = useState<MandateSettings>(defaults);
-  const [live, setLive] = useState(false);
   const [data, setData] = useState<RunResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(0);
 
-  const run = useCallback(
-    async (id: string, s: MandateSettings, l: boolean) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/run", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ scenarioId: id, settings: s, live: l }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json: RunResponse = await res.json();
-        setData(json);
-        const firstStop = json.results.findIndex((r) => r.decision !== "ALLOW");
-        setOpen(firstStop === -1 ? 0 : firstStop);
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+  // Runs entirely in the browser: real Ed25519 signing and verification, real rule evaluation.
+  const run = useCallback((id: string, s: MandateSettings) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { input } = buildRun(id, s);
+      const results: Result[] = runPipeline(input).map((r) => ({
+        ...r,
+        submit: r.decision === "ALLOW" ? { request: buildTransactionRequest(r.requirement) } : null,
+      }));
+      setData({ scenario: id, results });
+      const firstStop = results.findIndex((r) => r.decision !== "ALLOW");
+      setOpen(firstStop === -1 ? 0 : firstStop);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setTimeout(() => setLoading(false), 150);
+    }
+  }, []);
 
   useEffect(() => {
-    run(active, settings, live);
+    run(active, settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
@@ -170,7 +160,7 @@ export default function GuardConsole({
           </p>
           <div className="mt-4 flex items-center gap-3">
             <button
-              onClick={() => run(active, settings, live)}
+              onClick={() => run(active, settings)}
               className="rounded-md bg-bandwidth-500 px-4 py-2 text-sm font-medium text-white hover:bg-bandwidth-600 disabled:opacity-50"
               disabled={loading}
             >
@@ -185,20 +175,11 @@ export default function GuardConsole({
         <div className="rounded-lg border border-navy-500 bg-navy/80 p-4 text-sm">
           <div className="flex items-center justify-between">
             <span className="font-medium text-white">Fireblocks submit</span>
-            <span className={`rounded border px-2 py-0.5 font-mono text-[11px] ${liveAvailable ? "border-teal/40 text-teal" : "border-navy-400 text-genesis-500"}`}>
-              {liveAvailable ? "sandbox keys set" : "dry run"}
-            </span>
+            <span className="rounded border border-navy-400 px-2 py-0.5 font-mono text-[11px] text-genesis-500">dry run</span>
           </div>
-          {liveAvailable ? (
-            <label className="mt-3 flex items-center justify-between">
-              <span className="text-genesis-400">Send allowed payments to sandbox</span>
-              <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} className="h-4 w-4 accent-bandwidth" />
-            </label>
-          ) : (
-            <p className="mt-2 text-xs text-genesis-500">
-              No sandbox keys on this deployment. Allowed payments show the exact createTransaction request the agent runtime would send.
-            </p>
-          )}
+          <p className="mt-2 text-xs text-genesis-500">
+            Allowed payments show the exact createTransaction request the agent runtime sends. Run <code className="font-mono text-genesis-200">npm run sandbox</code> from the repo to send them to a sandbox workspace.
+          </p>
         </div>
 
         <div className="rounded-lg border border-navy-500 bg-navy/80 p-4">
@@ -356,10 +337,9 @@ function AttemptCard({ r, open, onToggle }: { r: Result; open: boolean; onToggle
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-white">Fireblocks createTransaction</span>
                 <span className="font-mono text-xs text-teal">
-                  {r.submit.mode === "live" ? `${r.submit.status}${r.submit.txId ? ` · ${r.submit.txId}` : ""}` : "dry run · not sent"}
+                  dry run · not sent
                 </span>
               </div>
-              {r.submit.error && <p className="mt-1 text-xs text-pink">{r.submit.error}</p>}
               <pre className="mt-2 overflow-x-auto rounded bg-navy-900 p-2 font-mono text-[11px] leading-relaxed text-genesis-200">
                 {JSON.stringify(r.submit.request, null, 2)}
               </pre>

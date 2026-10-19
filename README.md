@@ -2,7 +2,7 @@
 
 A reference integration for agent-initiated stablecoin payments on Fireblocks: an AI agent pays merchants in USDC from a Fireblocks vault, and every payment has to clear four gates before anything signs.
 
-**Live demo:** _link added after deploy_
+**Live demo:** https://kierandotai.github.io/fireblocks/
 
 Unofficial demo by Kieran Sweeney. Not affiliated with or endorsed by Fireblocks.
 
@@ -28,7 +28,7 @@ agent ──x402 request──▶ [1 integrity] ─▶ [2 grant] ─▶ [3 manda
                           merchant sig     user sig     caps, lists     first-match     sandbox or dry run
 ```
 
-Allowed payments are turned into a Fireblocks `createTransaction` request built with the official TypeScript SDK (`@fireblocks/ts-sdk`). The x402 nonce is used as both `externalTxId` and the request idempotency key, so a replay that somehow passed gate 1 still could not create a second transaction.
+Allowed payments are turned into a Fireblocks `createTransaction` request. The live page shows that request; `npm run sandbox` sends it to a sandbox workspace with the official TypeScript SDK (`@fireblocks/ts-sdk`). The x402 nonce is used as both `externalTxId` and the request idempotency key, so a replay that somehow passed gate 1 still could not create a second transaction.
 
 ### Scenarios
 
@@ -49,9 +49,9 @@ The mandate is editable in the UI, so you can raise caps and watch payments move
 
 ## What is real and what is not
 
-Real: Ed25519 signing and verification, the gate logic, the rule engine, and the `createTransaction` request shape. These run on every click and are covered by tests (`npm test`).
+Real: Ed25519 signing and verification, the gate logic, the rule engine, and the `createTransaction` request shape. These run in your browser on every click (the site is fully static) and are covered by tests (`npm test`).
 
-Fixtures: merchants, addresses, KYT ratings, the workspace policy, and the delegation grant format. The policy is modeled on Policy Engine behavior, not loaded from a workspace. The public deployment runs in dry-run mode and shows the request it would send.
+Fixtures: merchants, addresses, KYT ratings, the workspace policy, and the delegation grant format. The policy is modeled on Policy Engine behavior, not loaded from a workspace. The public site never talks to Fireblocks; only the local sandbox script does.
 
 ## What I would do next with access
 
@@ -68,14 +68,21 @@ npm run dev     # http://localhost:3000
 npm test        # engine tests
 ```
 
-To submit allowed payments to a Fireblocks sandbox workspace, copy `.env.example` to `.env.local` and set `FIREBLOCKS_API_KEY`, `FIREBLOCKS_SECRET_KEY`, `FIREBLOCKS_AGENT_VAULT_ID`, and `FIREBLOCKS_ASSET_ID`. A toggle appears in the UI. Give the API user the minimum role it needs.
+To submit allowed payments to a Fireblocks sandbox workspace, copy `.env.example` to `.env.local`, set `FIREBLOCKS_API_KEY`, `FIREBLOCKS_SECRET_KEY`, `FIREBLOCKS_AGENT_VAULT_ID`, and `FIREBLOCKS_ASSET_ID`, then run a scenario:
+
+```bash
+npm run sandbox -- routine
+npm run sandbox -- drain
+```
+
+Give the API user the minimum role it needs.
 
 ## Layout
 
 - `lib/engine.ts` gates, signing, policy evaluation
 - `lib/scenarios.ts` merchants, mandate, attack scenarios
-- `lib/fireblocks.ts` `createTransaction` request and sandbox submit
-- `app/api/run/route.ts` runs a scenario
+- `lib/txRequest.ts` the `createTransaction` request
+- `lib/fireblocks.ts` and `scripts/sandbox.ts` sandbox submit via the SDK
 - `components/GuardConsole.tsx` the UI
 
 Built by [Kieran Sweeney](https://kieran.ai).
